@@ -7,3 +7,8 @@
 3. `brew install freetds`
 
 4. `pip install -r requirements.txt`
+
+
+## TODO
+- add compare logic
+- add course update functionalities

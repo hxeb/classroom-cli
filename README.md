@@ -1,4 +1,4 @@
-# Quick Start - macos
+# Quick Start
 
 ## Installation
 
@@ -14,7 +14,7 @@ conda create -n classroom-cli python=3.7
 conda activate classroom-cli
 ```
 
-4. `brew install freetds` for mssql db connection
+4. `brew install freetds` for mssql db connection, this is for MacOS only
 
 5. `git clone https://github.com/hxeb/hxeb-scripts.git`
 

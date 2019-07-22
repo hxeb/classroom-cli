@@ -84,7 +84,9 @@ def change_google_course_state(id, state):
 @cli.command()
 @click.option('--id', help='Course ID')
 @click.option('--all', default=False, is_flag=True, help='Sync all courses')
-def sync(id, all):
+@click.option('--sync_teacher', default=False, is_flag=True, help='Sync Teacher')
+@click.option('--sync_student', default=False, is_flag=True, help='Sync Students')
+def sync(id, all, sync_teacher, sync_student):
     """Syncing org courses to google courses
     - create new
     - delete stale
@@ -101,12 +103,34 @@ def sync(id, all):
     payloads = build_course_payload(courses)
     for c in payloads:
         cr.sync_course(c)
+        if sync_teacher:
+            sync_teachers(id) # use hxeb.org class id here
+        if sync_student:
+            print('Syncing students')
+
 
 
 @cli.command()
 @click.option('--id', help='Course ID')
 def archive_google_course(id):
     Classroom().archive_course(id=id)
+
+
+def sync_teachers(class_id):
+    """
+    :param class_id: hxeb.org class id
+    """
+    # new_teacher = get_org_teacher(class_id)
+    new_teacher = 'zhuang1316@gmail.com'
+
+    alias_id = get_google_alias_of_org_class(config.SEASON_ID, class_id)
+    cr = Classroom()
+    old_teachers = cr.list_teachers(alias_id)
+    old_teachers = [t['profile']['emailAddress'] for t in old_teachers]
+
+    del_teachers = [t for t in old_teachers if t != new_teacher]
+    cr.delete_teachers(alias_id, del_teachers)
+    cr.add_teacher(alias_id, new_teacher)
 
 
 def main():
@@ -131,6 +155,7 @@ def fetch_classes_from_hxeb(class_id=None):
         ,c.ClassNameCn
         ,c.ClassNameEn
         ,c.Description
+        ,cr.RoomNo
         ,c.TypeId
         ,t.TypeNameCn
         ,fwt.Fee AS TuitionW_J
@@ -146,12 +171,13 @@ def fetch_classes_from_hxeb(class_id=None):
     FROM Arrangement a
     INNER JOIN Classes c ON a.ClassID = c.ClassID
     INNER JOIN Seasons s ON a.SeasonID = s.SeasonID
+    LEFT JOIN Classrooms cr ON a.RoomID = cr.RoomID
     Left join ClassType t ON c.TypeId = t.TypeId
     LEFT JOIN Fee fwt ON a.TuitionWID = fwt.FeeID
     LEFT JOIN Fee fht ON a.TuitionHID = fht.FeeID
     LEFT JOIN Fee fwb ON a.BookFeeWID = fwb.FeeID
     LEFT JOIN Fee fhb ON a.BookFeeHID = fhb.FeeID
-    WHERE a.SeasonID = {season_id}
+    WHERE a.SeasonId = {season_id}
     AND ActiveStatus = 'Active'
     """.format(season_id=config.SEASON_ID)
 
@@ -170,13 +196,13 @@ def build_course_payload(classes):
             'id': alias,
             'name': class_['ClassNameCn'].strip(),
             'section': class_['SeasonNameCn'].strip(),
-            # 'room': '301',
+            'room': class_['RoomNo'],
             'ownerId': 'me',
             'courseState': 'PROVISIONED',
         }
-        if class_['ClassNameEn']:
-            payload['descriptionHeading'] = class_['ClassNameEn']
+        # if class_['ClassNameEn']:
+        #     payload['descriptionHeading'] = class_['ClassNameEn']
         if class_['Description']:
-            payload['description'] = class_['Description']
+            payload['description'] = class_['Description']  # class hours
 
         yield payload

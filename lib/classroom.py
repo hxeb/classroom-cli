@@ -6,6 +6,8 @@ https://developers.google.com/classroom/quickstart/python?authuser=3
 
 import pickle
 import os.path
+import json
+from googleapiclient import errors
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -32,12 +34,16 @@ class Classroom:
         course = self._service.courses().create(body=payload).execute()
         return course.get('id')
 
-    # def patch_course(self, id, payload):
-    #     """
-    #     :param id: either google course id or alias
-    #     """
-    #     course = self.get_course(id)
-    #     course._course.
+    def patch_course(self, id, payload):
+        """
+        :param id: either google course id or alias
+        """
+        course = self._service.courses().patch(
+            id=id,
+            updateMask='name,section,room,description',
+            body=payload
+        ).execute()
+        return course
 
     def list_courses(self):
         results = self._service.courses().list().execute()
@@ -78,13 +84,62 @@ class Classroom:
         try:
             course = self.get_course(alias_id)
         except Exception:
-            print(f'Course {alias_id} {name} not found. Creating...')
             course = None
 
         if not course:
+            print(f'Course {alias_id} {name} not found. Creating...')
             self.create_course(payload)
         else:
             print(f'Course {alias_id} {name} exists, updating...')
+            self.patch_course(alias_id, payload)
+
+    def list_teachers(self, course_id):
+        results = self._service.courses().teachers().list(courseId=course_id).execute()
+        return results.get('teachers', [])
+
+    def add_teacher(self, course_id, teacher):
+        body = {
+            'userId': teacher,
+            'courseId': course_id,
+            'role': 'TEACHER'
+        }
+        try:
+            inv = self._service.invitations().create(body=body).execute()
+            print(f'Teacher {teacher} was added to the course with ID {course_id}')
+        except errors.HttpError as e:
+            error = json.loads(e.content).get('error')
+            if(error.get('code') == 409):
+                print(f'User "{teacher}" is already a member of this course.')
+            else:
+                raise
+
+    def delete_teacher(self, course_id, teacher):
+
+        teacher_white_list = [
+            'hxebclassroom@gmail.com',
+            'regadmin@hxeb.org',
+            'dean@hxeb.org',
+            'principal@hxeb.org',
+        ]
+
+        if teacher in teacher_white_list:
+            print(f'Teacher {teacher} is in white list.')
+            return
+
+        try:
+            self._service.courses().teachers().delete(
+                courseId=course_id, userId=teacher).execute()
+            print(f'Teacher {teacher} was deleted from the course with ID {course_id}')
+        except errors.HttpError as e:
+            error = json.loads(e.content).get('error')
+            if(error.get('code') == 409):
+                print(f'User "{teacher}" is not a teacher of this course.')
+            else:
+                raise
+
+    def delete_teachers(self, course_id, teachers):
+        for teacher in teachers:
+            self.delete_teacher(course_id, teacher)
 
 
 class Course:

@@ -51,3 +51,7 @@ It follows format `p:<season_id>-<class_id>`
 
 ## TODO
 - update students list per course
+
+## Limits
+- Google classroom api only allow creating 30 cources per day
+https://support.google.com/edu/classroom/answer/7300976?hl=en

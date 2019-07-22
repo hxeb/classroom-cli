@@ -1,14 +1,24 @@
 # Quick Start - macos
 
-1. install python3
+## Installation
 
-2. create virtualenv
+1. install [miniconda](https://docs.conda.io/en/latest/miniconda.html), any version
 
-3. `brew install freetds`
+2. create python3.7 virtualenv with conda
+```
+conda create -n classroom-cli python=3.7
+```
 
-4. `git clone https://github.com/hxeb/hxeb-scripts.git`
+3. activate virtualenv
+```
+conda activate classroom-cli
+```
 
-5. `pip install hxeb-scripts`
+4. `brew install freetds` for mssql db connection
+
+5. `git clone https://github.com/hxeb/hxeb-scripts.git`
+
+6. `pip install hxeb-scripts`
 
 ## Usages
 
@@ -40,5 +50,4 @@ It follows format `p:<season_id>-<class_id>`
 
 
 ## TODO
-- update teachers list per course
 - update students list per course

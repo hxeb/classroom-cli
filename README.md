@@ -6,9 +6,11 @@
 
 3. `brew install freetds`
 
-4. `pip install -r requirements.txt`
+4. `git clone https://github.com/hxeb/hxeb-scripts.git`
+
+5. `pip install hxeb-scripts`
 
 
 ## TODO
-- add compare logic
-- add course update functionalities
+- update teachers list per course
+- update students list per course

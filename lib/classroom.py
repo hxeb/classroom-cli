@@ -32,13 +32,59 @@ class Classroom:
         course = self._service.courses().create(body=payload).execute()
         return course.get('id')
 
+    # def patch_course(self, id, payload):
+    #     """
+    #     :param id: either google course id or alias
+    #     """
+    #     course = self.get_course(id)
+    #     course._course.
+
     def list_courses(self):
         results = self._service.courses().list().execute()
         return results.get('courses', [])
 
-    def get_course(self):
-        course = service.courses().get(id=course_id).execute()
-        return Course(course)
+    def get_course(self, id):
+        course = self._service.courses().get(id=id).execute()
+        teachers = self._service.courses().teachers().list(courseId=id).execute()
+        students = self._service.courses().students().list(courseId=id).execute()
+        return Course(course, students=students, teachers=teachers)
+
+    def delete_course(self, id):
+        """Can only delete courseState=ARCHIVED courses"""
+        self._service.courses().delete(id=id).execute()
+        print(f'Course ID {id} deleted')
+
+    def archive_course(self, id):
+        course = self._service.courses().patch(
+            id=id,
+            updateMask='courseState',
+            body={'courseState': 'ARCHIVED'}
+        ).execute()
+        print(f'Course {course["id"]} {course["name"]} ARCHIVED')
+        return course
+
+    def change_course_state(self, id, state):
+        course = self._service.courses().patch(
+            id=id,
+            updateMask='courseState',
+            body={'courseState': state}
+        ).execute()
+        print(f'Course {course["id"]} {course["name"]} {state}')
+        return course
+
+    def sync_course(self, payload):
+        alias_id = payload['id']
+        name = payload['name']
+        try:
+            course = self.get_course(alias_id)
+        except Exception:
+            print(f'Course {alias_id} {name} not found. Creating...')
+            course = None
+
+        if not course:
+            self.create_course(payload)
+        else:
+            print(f'Course {alias_id} {name} exists, updating...')
 
 
 class Course:
@@ -46,8 +92,11 @@ class Course:
     https://developers.google.com/classroom/guides/manage-courses
     """
 
-    def __init__(self, course):
+    def __init__(self, course, teachers=None, students=None):
         self._course = course
+        self.teachers = teachers
+        self.students = students
+        # self.invitations = invitations
         self.name = course.get('name')
         self.id = course.get('id')
 
@@ -58,12 +107,21 @@ class Course:
         pass
 
 
+def get_google_alias_of_org_class(season_id, class_id):
+    return f'p:{season_id}-{class_id}'
+
+
 def get_google_classroom_service():
     """Shows basic usage of the Classroom API.
     Prints the names of the first 10 courses the user has access to.
     """
     # If modifying these scopes, delete the file token.pickle.
-    SCOPES = ['https://www.googleapis.com/auth/classroom.courses']
+    SCOPES = [
+        'https://www.googleapis.com/auth/classroom.courses',
+        'https://www.googleapis.com/auth/classroom.rosters',
+        'https://www.googleapis.com/auth/classroom.coursework.students',
+        'https://www.googleapis.com/auth/classroom.profile.emails',
+    ]
     creds = None
     # The file token.pickle stores the user's access and refresh tokens, and is
     # created automatically when the authorization flow completes for the first

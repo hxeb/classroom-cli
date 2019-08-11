@@ -4,3 +4,4 @@ pymssql==2.1.4
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
+pandas==0.25.0

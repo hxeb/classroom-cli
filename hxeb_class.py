@@ -10,6 +10,7 @@ import click
 import config
 from lib.database import Database
 from lib.classroom import Classroom, get_google_alias_of_org_class
+import pandas as pd
 
 
 @click.group()
@@ -58,7 +59,16 @@ def list_org_courses():
         name = c['ClassNameCn']
         teacher = c['teacher_email'] if c['teacher_email'] else ''
         click.echo(f'{i}\t{id}\t{season}\t{teacher: <30}\t{name}')
-    # click.echo('Help: run "hxebclass describe-google-course --id=id" to see google course details.' )
+    click.echo('Help: run "hxebclass describe-org-course --id=id" to see org course details.' )
+
+
+@cli.command()
+@click.option('--id', help='Org Course ID')
+def describe_org_course(id):
+    course = fetch_classes_from_hxeb(id)
+    registrations = fetch_class_registrations_from_hxeb(id)
+    click.echo(pd.DataFrame(course).iloc[:, :10])
+    click.echo(pd.DataFrame(registrations))
 
 
 @cli.command()
@@ -132,8 +142,9 @@ def sync(id, all, sync_teacher, sync_student):
         if sync_teacher:
             sync_teachers(extra['teacher_email'], extra['alias']) # use hxeb.org class id here
         if sync_student:
-            print('Syncing students')
-
+            registrations = fetch_class_registrations_from_hxeb(class_id=extra['class_id'])
+            students = [reg['FamilyEmail'].strip().lower() for reg in registrations if reg['FamilyEmail']]
+            sync_students(students, extra['alias'])
 
 
 @cli.command()
@@ -148,26 +159,48 @@ def sync_teachers(new_teacher, alias_id):
     :param alias: class alias
     """
 
-    whitelist = ['hxebclassroom@gmail.com']
+    whitelist = ['hxebclassroom@gmail.com', 'regadmin@hxeb.org']
     if not new_teacher or not '@' in new_teacher:
         click.echo(f'No teacher found for class alias {alias_id}')
         return
 
-    new_teacher = new_teacher.strip()
+    new_teacher = new_teacher.strip().lower()
     cr = Classroom()
     # get current teachers in google course
     old_teachers = cr.list_teachers(alias_id)
-    old_teachers = [t['profile']['emailAddress'] for t in old_teachers]
+    old_teachers = [t['profile']['emailAddress'].lower() for t in old_teachers]
 
     # remove teachers that don't exist in org course anymore
     del_teachers = [t for t in old_teachers if t != new_teacher and t not in whitelist]
     if del_teachers:
         print('Removing teacher', del_teachers)
-        # cr.delete_teachers(alias_id, del_teachers)
+        cr.delete_teachers(alias_id, del_teachers)
     # add new teacher if they are not in google course already
     if new_teacher not in old_teachers:
         print('Inviting teacher', new_teacher)
-        # cr.add_teacher(alias_id, new_teacher)
+        cr.add_teacher(alias_id, new_teacher)
+
+
+def sync_students(students, alias_id):
+    n = len(students)
+    click.echo(f'{n} students found for class alias {alias_id}')
+    # same family with multiple kids in the same class
+    students = list(set(students))
+    cr = Classroom()
+    # get current students in google course
+    old_students = cr.list_students(alias_id)
+    old_students = [s['profile']['emailAddress'].lower() for s in old_students]
+
+    # remove students that don't exist in org course anymore
+    del_students = [s for s in old_students if s not in students]
+    if del_students:
+        print('Removing students', del_students)
+        cr.delete_students(alias_id, del_students)
+    # add new students if they are not in google course already
+    new_students = [s for s in students if s not in old_students]
+    if new_students:
+        print('Inviting students', new_students)
+        cr.add_students(alias_id, new_students)
 
 
 def main():
@@ -248,11 +281,12 @@ def build_course_payload(classes, extra=False):
             payload['extra'] = {}
             payload['extra']['teacher_email'] = class_['teacher_email']
             payload['extra']['alias'] = alias
+            payload['extra']['class_id'] = class_id
 
         yield payload
 
 
-def fetch_class_registrations_from_hxeb():
+def fetch_class_registrations_from_hxeb(class_id=None):
     db = Database(config)
     cursor = db.cursor()
 
@@ -279,5 +313,7 @@ def fetch_class_registrations_from_hxeb():
     AND ActiveStatus = 'Active'
     """.format(season_id=config.SEASON_ID)
 
+    if class_id:
+        sql += f'\nAND c.ClassId = {class_id}'
     registrations = db.read_sql(sql)
     return registrations

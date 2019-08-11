@@ -97,6 +97,10 @@ class Classroom:
         results = self._service.courses().teachers().list(courseId=course_id).execute()
         return results.get('teachers', [])
 
+    def list_students(self, course_id):
+        results = self._service.courses().students().list(courseId=course_id).execute()
+        return results.get('students', [])
+
     def add_teacher(self, course_id, teacher):
         body = {
             'userId': teacher,
@@ -105,13 +109,13 @@ class Classroom:
         }
         try:
             inv = self._service.invitations().create(body=body).execute()
-            print(f'Teacher {teacher} was added to the course with ID {course_id}')
+            print(f'Teacher {teacher} was invited to the course with ID {course_id}')
         except errors.HttpError as e:
             error = json.loads(e.content).get('error')
             if(error.get('code') == 409):
                 print(f'User "{teacher}" is already a member of this course.')
             else:
-                raise
+                print('ERROR: ', error['message'])
 
     def delete_teacher(self, course_id, teacher):
 
@@ -141,6 +145,42 @@ class Classroom:
         for teacher in teachers:
             self.delete_teacher(course_id, teacher)
 
+    def add_student(self, course_id, student):
+        body = {
+            'userId': student,
+            'courseId': course_id,
+            'role': 'STUDENT'
+        }
+        try:
+            inv = self._service.invitations().create(body=body).execute()
+            print(f'Student {student} was invited to the course with ID {course_id}')
+        except errors.HttpError as e:
+            error = json.loads(e.content).get('error')
+            if(error.get('code') == 409):
+                print(f'User "{student}" is already a member of this course.')
+            else:
+                print('ERROR: ', error['message'])
+
+    def add_students(self, course_id, students):
+        for student in students:
+            self.add_student(course_id, student)
+
+    def delete_student(self, course_id, student):
+        try:
+            self._service.courses().students().delete(
+                courseId=course_id, userId=student).execute()
+            print(f'Student {student} was deleted from the course with ID {course_id}')
+        except errors.HttpError as e:
+            error = json.loads(e.content).get('error')
+            if(error.get('code') == 409):
+                print(f'User "{student}" is not a student of this course.')
+            else:
+                raise
+
+    def delete_students(self, course_id, students):
+        for student in students:
+            self.delete_student(course_id, student)
+
 
 class Course:
     """
@@ -163,7 +203,7 @@ class Course:
 
 
 def get_google_alias_of_org_class(season_id, class_id):
-    return f'p:{season_id}-{class_id}'
+    return f'p:hexb-{season_id}-{class_id}'
 
 
 def get_google_classroom_service():

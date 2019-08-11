@@ -20,13 +20,19 @@ def cli():
 @cli.command()
 def list_google_courses():
     """data from google classroom"""
+    org_courses = fetch_classes_from_hxeb()
+    org_course_names = [c['ClassNameCn'].strip() for c in org_courses ]
     courses = Classroom().list_courses()
+    courses = sorted(courses, key=lambda x: x['name'])
     click.echo('\tGoogle Course ID\tState\tName')
     for i, c in enumerate(courses, 1):
         id = c['id']
-        name = c['name']
+        name = c['name'].strip()
         state = c['courseState']
-        click.echo(f'{i}\t{id}\t{state}\t{name}')
+        if name not in org_course_names:
+            click.echo(f'{i}\t{id}\t{state}\t{name}\tSTALE')
+        else:
+            click.echo(f'{i}\t{id}\t{state}\t{name}')
     click.echo('Help: run "hxebclass describe-google-course --id=id" to see google course details.' )
 
 
@@ -43,7 +49,7 @@ def describe_google_course(id):
 @cli.command()
 def list_org_courses():
     """Data from hxeb.org"""
-    courses = fetch_classes_from_hxeb()
+    courses = sorted(fetch_classes_from_hxeb(), key=lambda x: x['ClassNameCn'])
     click.echo('\tClass ID\tSeason\tName')
     for i, c in enumerate(courses, 1):
         id = c['ClassId']
@@ -131,6 +137,12 @@ def sync_teachers(class_id):
     del_teachers = [t for t in old_teachers if t != new_teacher]
     cr.delete_teachers(alias_id, del_teachers)
     cr.add_teacher(alias_id, new_teacher)
+
+
+# def get_org_teacher(class_id):
+#     query = """
+
+#     """
 
 
 def main():

@@ -24,15 +24,16 @@ def list_google_courses():
     org_course_names = [c['ClassNameCn'].strip() for c in org_courses ]
     courses = Classroom().list_courses()
     courses = sorted(courses, key=lambda x: x['name'])
-    click.echo('\tGoogle Course ID\tState\tName')
+    click.echo('\tGoogle Course ID\tCode\tState\tName')
     for i, c in enumerate(courses, 1):
         id = c['id']
         name = c['name'].strip()
         state = c['courseState']
+        code = c['enrollmentCode']
         if name not in org_course_names:
-            click.echo(f'{i}\t{id}\t{state}\t{name}\tSTALE')
+            click.echo(f'{i}\t{id}\t{code: <10}\t{state}\t{name}\tSTALE')
         else:
-            click.echo(f'{i}\t{id}\t{state}\t{name}')
+            click.echo(f'{i}\t{id}\t{code: <10}\t{state}\t{name}')
     click.echo('Help: run "hxebclass describe-google-course --id=id" to see google course details.' )
 
 
@@ -50,13 +51,28 @@ def describe_google_course(id):
 def list_org_courses():
     """Data from hxeb.org"""
     courses = sorted(fetch_classes_from_hxeb(), key=lambda x: x['ClassNameCn'])
-    click.echo('\tClass ID\tSeason\tName')
+    click.echo('\tClass ID\tSeason\tTeacher\tName')
     for i, c in enumerate(courses, 1):
         id = c['ClassId']
         season = c['SeasonNameCn']
         name = c['ClassNameCn']
-        click.echo(f'{i}\t{id}\t{season}\t{name}')
+        teacher = c['teacher_email'] if c['teacher_email'] else ''
+        click.echo(f'{i}\t{id}\t{season}\t{teacher: <30}\t{name}')
     # click.echo('Help: run "hxebclass describe-google-course --id=id" to see google course details.' )
+
+
+@cli.command()
+def list_org_registrations():
+    registrations = sorted(fetch_class_registrations_from_hxeb(), key=lambda x: x['ClassNameCn'])
+    click.echo('\tClass ID\tSeason\tEmail\tStudent')
+    for i, c in enumerate(registrations, 1):
+        id = c['ClassId']
+        season = c['SeasonNameCn']
+        name = c['ClassNameCn']
+        student_name_cn = c['StudentNameCn'] if c['StudentNameCn'] else ''
+        student_name_en = c['StudentNameEn'] if c['StudentNameEn'] else ''
+        family_email = c['FamilyEmail']
+        click.echo(f'{i}\t{id}\t{season}\t{student_name_cn}\t{student_name_en: <15}\t{family_email: <25}\t{name: <50}')
 
 
 @cli.command()
@@ -98,6 +114,9 @@ def sync(id, all, sync_teacher, sync_student):
     - delete stale
     - update teacher and students
     """
+    if not any([id, all]):
+        click.echo('Must pass either --all or --id')
+
     cr = Classroom()
     if id:
         courses = fetch_classes_from_hxeb(class_id=id)
@@ -106,11 +125,12 @@ def sync(id, all, sync_teacher, sync_student):
     else:
         return
 
-    payloads = build_course_payload(courses)
+    payloads = build_course_payload(courses, extra=True)
     for c in payloads:
+        extra = c.pop('extra')
         cr.sync_course(c)
         if sync_teacher:
-            sync_teachers(id) # use hxeb.org class id here
+            sync_teachers(extra['teacher_email'], extra['alias']) # use hxeb.org class id here
         if sync_student:
             print('Syncing students')
 
@@ -122,27 +142,32 @@ def archive_google_course(id):
     Classroom().archive_course(id=id)
 
 
-def sync_teachers(class_id):
+def sync_teachers(new_teacher, alias_id):
     """
-    :param class_id: hxeb.org class id
+    :param new_teacher: email
+    :param alias: class alias
     """
-    # new_teacher = get_org_teacher(class_id)
-    new_teacher = 'zhuang1316@gmail.com'
 
-    alias_id = get_google_alias_of_org_class(config.SEASON_ID, class_id)
+    whitelist = ['hxebclassroom@gmail.com']
+    if not new_teacher or not '@' in new_teacher:
+        click.echo(f'No teacher found for class alias {alias_id}')
+        return
+
+    new_teacher = new_teacher.strip()
     cr = Classroom()
+    # get current teachers in google course
     old_teachers = cr.list_teachers(alias_id)
     old_teachers = [t['profile']['emailAddress'] for t in old_teachers]
 
-    del_teachers = [t for t in old_teachers if t != new_teacher]
-    cr.delete_teachers(alias_id, del_teachers)
-    cr.add_teacher(alias_id, new_teacher)
-
-
-# def get_org_teacher(class_id):
-#     query = """
-
-#     """
+    # remove teachers that don't exist in org course anymore
+    del_teachers = [t for t in old_teachers if t != new_teacher and t not in whitelist]
+    if del_teachers:
+        print('Removing teacher', del_teachers)
+        # cr.delete_teachers(alias_id, del_teachers)
+    # add new teacher if they are not in google course already
+    if new_teacher not in old_teachers:
+        print('Inviting teacher', new_teacher)
+        # cr.add_teacher(alias_id, new_teacher)
 
 
 def main():
@@ -163,6 +188,7 @@ def fetch_classes_from_hxeb(class_id=None):
     SELECT a.ArrangeID
         ,c.ClassId
         ,a.SeasonId
+        ,te.email AS teacher_email
         ,s.SeasonNameCn
         ,c.ClassNameCn
         ,c.ClassNameEn
@@ -184,6 +210,7 @@ def fetch_classes_from_hxeb(class_id=None):
     INNER JOIN Classes c ON a.ClassID = c.ClassID
     INNER JOIN Seasons s ON a.SeasonID = s.SeasonID
     LEFT JOIN Classrooms cr ON a.RoomID = cr.RoomID
+    LEFT JOIN Teacher te ON a.TeacherID = te.TeacherID
     Left join ClassType t ON c.TypeId = t.TypeId
     LEFT JOIN Fee fwt ON a.TuitionWID = fwt.FeeID
     LEFT JOIN Fee fht ON a.TuitionHID = fht.FeeID
@@ -199,7 +226,7 @@ def fetch_classes_from_hxeb(class_id=None):
     return classes
 
 
-def build_course_payload(classes):
+def build_course_payload(classes, extra=False):
     for class_ in classes:
         class_id = class_['ClassId']
         season_id = class_['SeasonId']
@@ -216,5 +243,41 @@ def build_course_payload(classes):
         #     payload['descriptionHeading'] = class_['ClassNameEn']
         if class_['Description']:
             payload['description'] = class_['Description']  # class hours
+        if extra:
+            # keep some extra info
+            payload['extra'] = {}
+            payload['extra']['teacher_email'] = class_['teacher_email']
+            payload['extra']['alias'] = alias
 
         yield payload
+
+
+def fetch_class_registrations_from_hxeb():
+    db = Database(config)
+    cursor = db.cursor()
+
+    sql = """
+    SELECT a.ArrangeID
+        ,c.ClassId
+        ,a.SeasonId
+        ,te.email AS TeacherEmail
+        ,s.SeasonNameCn
+        ,c.ClassNameCn
+        ,c.ClassNameEn
+        ,st.NameCn AS StudentNameCn
+        ,st.NameFirstEn + ' ' + st.NameLastEn AS StudentNameEn
+        ,f.email AS FamilyEmail
+    FROM Arrangement a
+    INNER JOIN Classes c ON a.ClassID = c.ClassID
+    INNER JOIN Seasons s ON a.SeasonID = s.SeasonID
+    INNER JOIN ClassRegistration cr ON a.ClassID = cr.ClassID AND a.SeasonID = cr.SeasonID
+    LEFT JOIN Teacher te ON a.TeacherID = te.TeacherID
+    LEFT JOIN Student st ON cr.StudentID = st.StudentID
+    LEFT JOIN Family f ON cr.FamilyID = f.FamilyID
+    Left join ClassType t ON c.TypeId = t.TypeId
+    WHERE a.SeasonId = {season_id}
+    AND ActiveStatus = 'Active'
+    """.format(season_id=config.SEASON_ID)
+
+    registrations = db.read_sql(sql)
+    return registrations

@@ -171,10 +171,10 @@ def sync_teachers(new_teacher, alias_id):
     old_teachers = [t['profile']['emailAddress'].lower() for t in old_teachers]
 
     # remove teachers that don't exist in org course anymore
-    del_teachers = [t for t in old_teachers if t != new_teacher and t not in whitelist]
-    if del_teachers:
-        print('Removing teacher', del_teachers)
-        cr.delete_teachers(alias_id, del_teachers)
+    # del_teachers = [t for t in old_teachers if t != new_teacher and t not in whitelist]
+    # if del_teachers:
+    #     print('Removing teacher', del_teachers)
+    #     cr.delete_teachers(alias_id, del_teachers)
     # add new teacher if they are not in google course already
     if new_teacher not in old_teachers:
         print('Inviting teacher', new_teacher)
@@ -192,10 +192,10 @@ def sync_students(students, alias_id):
     old_students = [s['profile']['emailAddress'].lower() for s in old_students]
 
     # remove students that don't exist in org course anymore
-    del_students = [s for s in old_students if s not in students]
-    if del_students:
-        print('Removing students', del_students)
-        cr.delete_students(alias_id, del_students)
+    # del_students = [s for s in old_students if s not in students]
+    # if del_students:
+    #     print('Removing students', del_students)
+    #     cr.delete_students(alias_id, del_students)
     # add new students if they are not in google course already
     new_students = [s for s in students if s not in old_students]
     if new_students:
